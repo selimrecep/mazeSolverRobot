@@ -1,0 +1,3 @@
+[submodule "mazeGenerator"]
+	path = mazeGenerator
+	url = https://github.com/selimrecep/mazeGenerator
