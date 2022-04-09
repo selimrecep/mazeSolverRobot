@@ -1,0 +1,1 @@
+Basically repo that solves maze using different ways
