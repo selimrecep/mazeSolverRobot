@@ -1,3 +1,4 @@
 #pragma once
-void getDetailsFromUser();
+void testMazes();
+void testSingleMaze();
 void printNormalisedVersion(int value, int max);

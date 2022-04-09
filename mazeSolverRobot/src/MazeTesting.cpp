@@ -2,17 +2,87 @@
 #include "TrueGrid.h"
 #include <Maze2.h>
 #include <MazeTesting.h>
+#include <conio.h>
+#include <cstdio>
 #include <iostream>
 #include <random.h>
 
-void getDetailsFromUser() {
+void testSingleMaze() {
+
+  CellPos entryPoint{};
+  CellPos exitPoint{};
+  int rows{};
+  int columns{};
+
+  std::wcout << "Enter row count: ";
+  std::wcin >> rows;
+  std::wcout << "Enter column count: ";
+  std::wcin >> columns;
+  std::wcout << "Row of entryPoint(row, column), based on 1: ";
+  std::wcin >> entryPoint.row;
+  std::wcout << "Column of entryPoint(row, column), based on 1: ";
+  std::wcin >> entryPoint.column;
+  std::wcout << "Row of exitPoint(row, column), based on 1: ";
+  std::wcin >> exitPoint.row;
+  std::wcout << "Column of exitPoint(row, column), based on 1: ";
+  std::wcin >> exitPoint.column;
+
+  entryPoint.row--;
+  entryPoint.column--;
+  exitPoint.row--;
+  exitPoint.column--;
+
+  Maze2 maze2{rows, columns, entryPoint, exitPoint};
+  maze2.generate();
+  maze2.printMaze();
+
+  std::cout << "\n";
+
+  maze2.printMaze();
+  bool_grid_t gridBinary;
+  maze2.getTrueGrid().getAsMatrix(gridBinary);
+
+  maze2.getTrueGrid().printTheMatrix(gridBinary);
+
+  optional_step_callback_t callback = [](bool_grid_t& grid) {
+    static bool passOver{false};
+    if (!passOver) {
+      TrueGrid::printTheMatrix(grid);
+      std::wcout << "-----------\n";
+      std::wcout << "Press any key(after a key) to iterate for next step Write "
+                    "'e' if want to pass over.\n ";
+      std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+      // why doesnt work...
+      wchar_t ch{};
+      std::wcin >> ch;
+      if (ch == 'e')
+        passOver = true;
+    }
+  };
+  Path path{
+      RobotPathFinder::solveMaze(gridBinary, entryPoint, exitPoint, callback)};
+  std::wcout << "Maze finished! Clearing matrix and printing final state: \n";
+
+  std::wcout << "cleared state: \n";
+
+  TrueGrid& grid = maze2.getTrueGrid();
+  grid.getAsMatrix(gridBinary);
+
+  for (auto& pos : path) {
+    gridBinary[pos.row][pos.column] = GridCellState::STAR;
+  }
+
+  TrueGrid::printTheMatrix(gridBinary);
+}
+void testMazes() {
   int testAmount{};
   std::wcout << "Please enter amount of tests: ";
   std::cin >> testAmount;
 
   if (testAmount < 1) {
     std::wcout << "Invalid value.";
-    getDetailsFromUser();
+    testMazes();
     return;
   }
 
