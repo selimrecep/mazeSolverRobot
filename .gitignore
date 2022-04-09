@@ -1,1 +1,6 @@
 .vscode
+.clang-format
+mazeSolverRobot/src/.clangd
+mazeSolverRobot/src/main.exe
+build
+.cache
