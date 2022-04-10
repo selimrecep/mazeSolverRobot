@@ -1,3 +1,4 @@
+#include "Path.h"
 #include "RobotPathFinder.h"
 #include "TrueGrid.h"
 #include <Maze2.h>
@@ -27,10 +28,32 @@ void testSingleMaze() {
   std::wcout << "Column of exitPoint(row, column), based on 1: ";
   std::wcin >> exitPoint.column;
 
+  std::wcout << "Last question: do you want robot to prefer to only seek for "
+                "shortest paths?(y/n): ";
+  wchar_t ch{};
+  bool useShortestPathOnly{false};
+  std::wcin >> ch;
+  if (ch == 'y')
+    useShortestPathOnly = true;
+
   entryPoint.row--;
   entryPoint.column--;
   exitPoint.row--;
   exitPoint.column--;
+
+  if (entryPoint.row < 0 || entryPoint.row > rows - 1 ||
+      entryPoint.column < 0 || entryPoint.column > columns - 1) {
+    std::wcout << "Invalid values.\n";
+    testSingleMaze(); // :P
+    return;
+  }
+
+  if (exitPoint.row < 0 || exitPoint.row > rows - 1 || exitPoint.column < 0 ||
+      exitPoint.column > columns - 1) {
+    std::wcout << "Invalid values.\n";
+    testSingleMaze(); // :P
+    return;
+  }
 
   Maze2 maze2{rows, columns, entryPoint, exitPoint};
   maze2.generate();
@@ -44,11 +67,19 @@ void testSingleMaze() {
 
   maze2.getTrueGrid().printTheMatrix(gridBinary);
 
-  optional_step_callback_t callback = [](bool_grid_t& grid) {
+  optional_step_callback_t callback = [](bool_grid_t& grid,
+                                         bool useOnlyShortestPath,
+                                         bool logNotShortPath,
+                                         int logFoundShorterPath) {
     static bool passOver{false};
     if (!passOver) {
       TrueGrid::printTheMatrix(grid);
       std::wcout << "-----------\n";
+      if (logFoundShorterPath != -1)
+        std::wcout << "LOG: Found shorter path with length of "
+                   << logFoundShorterPath << " \n";
+      if (useOnlyShortestPath && logNotShortPath)
+        std::wcout << "LOG: This is not a shorter path! Going back.\n";
       std::wcout << "Press any key(after a key) to iterate for next step Write "
                     "'e' if want to pass over.\n ";
       std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -60,9 +91,13 @@ void testSingleMaze() {
         passOver = true;
     }
   };
-  Path path{
-      RobotPathFinder::solveMaze(gridBinary, entryPoint, exitPoint, callback)};
+  PathMatrixReturn pathAndMatrix{RobotPathFinder::solveMaze(
+      gridBinary, entryPoint, exitPoint, useShortestPathOnly, callback)};
+  Path& path{pathAndMatrix.path};
+  bool_grid_t& robotMatrix{pathAndMatrix.robotMatrix};
   std::wcout << "Maze finished! Clearing matrix and printing final state: \n";
+  std::wcout << "Robot matrix:\n";
+  TrueGrid::printTheMatrix(robotMatrix);
 
   std::wcout << "cleared state: \n";
 
@@ -148,8 +183,11 @@ void testMazes() {
     maze.generate();
     bool_grid_t gridBinary;
     maze.getTrueGrid().getAsMatrix(gridBinary);
-    Path robotPath =
+    PathMatrixReturn pathAndMatrix =
         RobotPathFinder::solveMaze(gridBinary, entryPoint, exitPoint);
+
+    Path& robotPath{pathAndMatrix.path};
+
     maze.getTrueGrid().getAsMatrix(gridBinary);
     Path theoricPath =
         MazeSolver::solveBinaryMaze(gridBinary, entryPoint, exitPoint);

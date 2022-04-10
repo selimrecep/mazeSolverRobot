@@ -1,12 +1,14 @@
 #include "RobotPathFinder.h"
 #include "TrueGrid.h"
+#include <algorithm>
+#include <array>
 #include <functional>
 
-using visits_t = std::vector<std::vector<bool>>;
-
-Path RobotPathFinder::solveMaze(bool_grid_t& binaryMatrix, CellPos entryPoint,
-                                CellPos exitPoint,
-                                optional_step_callback_t callback) {
+PathMatrixReturn RobotPathFinder::solveMaze(bool_grid_t& binaryMatrix,
+                                            CellPos entryPoint,
+                                            CellPos exitPoint,
+                                            bool onlyUseShortestPaths,
+                                            optional_step_callback_t callback) {
   // Very dirty, but...
   int rows(binaryMatrix.size());
   int columns(binaryMatrix[0].size());
@@ -15,6 +17,16 @@ Path RobotPathFinder::solveMaze(bool_grid_t& binaryMatrix, CellPos entryPoint,
   int tempOriginalColumns((columns - 1) / 2);
   convertEnterExitPoints(entryPoint, exitPoint, tempOriginalRows,
                          tempOriginalColumns);
+  PathMatrixReturn retval{{}, {rows * columns}};
+  Path& path{retval.path};
+
+  bool_grid_t& robotMatrix{retval.robotMatrix};
+  robotMatrix.resize(rows);
+  for (int i{0}; i < rows; ++i) {
+    robotMatrix[i].resize(columns);
+    std::fill(robotMatrix[i].begin(), robotMatrix[i].end(),
+              GridCellState::STAR);
+  }
 
   CellPos currentPoint{entryPoint};
   Orientation robotRot{Orientation::up};
@@ -26,41 +38,69 @@ Path RobotPathFinder::solveMaze(bool_grid_t& binaryMatrix, CellPos entryPoint,
   }
 
   std::stack<CellPos> stack;
-  Path path{rows * columns};
 
   stack.push(currentPoint);
 
+  // Mark enter and exit point in robot matrix, enter point will be overridden
+  // tho
+  robotMatrix[entryPoint.row][entryPoint.column] = GridCellState::NOTFILLED;
+  robotMatrix[exitPoint.row][exitPoint.column] = GridCellState::NOTFILLED;
+
+  bool logNotShortest{false};
+  bool logFoundShorterPath{false};
+
   while (!stack.empty()) {
+
     currentPoint = stack.top();
+    readSensorDataToMatrix(binaryMatrix, robotMatrix, visits, robotRot,
+                           currentPoint);
     visits[currentPoint.row][currentPoint.column] = true;
-
-    binaryMatrix[currentPoint.row][currentPoint.column] =
+    robotMatrix[currentPoint.row][currentPoint.column] =
         RobotPathFinder::getCorrespondingState(robotRot);
-
-    if (callback) {
-      callback(binaryMatrix);
-    }
 
     if (currentPoint == exitPoint) {
       if (path.getLength() == 0 ||
           path.getLength() > static_cast<int>(stack.size())) {
         // Makes a copy of stack :p
         RobotPathFinder::copyStackToPath(stack, path);
+        logFoundShorterPath = true;
       }
     }
 
-    CellInfo nextCellInfo =
-        getNextPoint(currentPoint, visits, binaryMatrix, robotRot);
-    if (nextCellInfo.valid) {
-      binaryMatrix[currentPoint.row][currentPoint.column] =
+    if (callback) {
+      callback(robotMatrix, onlyUseShortestPaths, logNotShortest,
+               (logFoundShorterPath ? path.getLength() : -1));
+      if (logFoundShorterPath)
+        logFoundShorterPath = false;
+      if (logNotShortest)
+        logNotShortest = false;
+    }
+
+    CellInfo nextCellInfo = getNextPointWithPreference(
+        currentPoint, visits, robotMatrix, robotRot, exitPoint);
+
+    bool validMove{nextCellInfo.valid};
+
+    if (onlyUseShortestPaths) {
+      int currentPathLength{path.getLength()};
+      if (currentPathLength != 0 &&
+          currentPathLength <= static_cast<int>(stack.size())) {
+        // It isn't shortest path. go back
+        validMove = false;
+        logNotShortest = true;
+      }
+    }
+    if (validMove) {
+      robotMatrix[currentPoint.row][currentPoint.column] =
           GridCellState::BEEN_VISITED;
       robotRot = getRotBetweenPoints(currentPoint, nextCellInfo.pos);
       stack.push(nextCellInfo.pos);
+
     } else {
       stack.pop();
       if (!stack.empty()) {
         CellPos lastCellOnStack{stack.top()};
-        binaryMatrix[currentPoint.row][currentPoint.column] =
+        robotMatrix[currentPoint.row][currentPoint.column] =
             GridCellState::BEEN_LEFT;
         robotRot = getRotBetweenPoints(currentPoint, lastCellOnStack);
       } else {
@@ -74,8 +114,39 @@ Path RobotPathFinder::solveMaze(bool_grid_t& binaryMatrix, CellPos entryPoint,
     }
   }
 
-  return path;
+  return retval;
 }
+
+// Simulation of robot reading sensor data from the matrix
+void RobotPathFinder::readSensorDataToMatrix(bool_grid_t& binaryMatrix,
+                                             bool_grid_t& robotMatrix,
+                                             visits_t& visits, Orientation rot,
+                                             CellPos pos) {
+  int rows(binaryMatrix.size());
+  int columns(binaryMatrix[0].size());
+
+  if (pos.row > 0 && rot != Orientation::down &&
+      !visits[pos.row - 1][pos.column]) {
+    robotMatrix[pos.row - 1][pos.column] =
+        binaryMatrix[pos.row - 1][pos.column];
+  }
+  if (pos.column < columns - 1 && rot != Orientation::left &&
+      !visits[pos.row][pos.column + 1]) {
+    robotMatrix[pos.row][pos.column + 1] =
+        binaryMatrix[pos.row][pos.column + 1];
+  }
+  if (pos.row < rows - 1 && rot != Orientation::up &&
+      !visits[pos.row + 1][pos.column]) {
+    robotMatrix[pos.row + 1][pos.column] =
+        binaryMatrix[pos.row + 1][pos.column];
+  }
+  if (pos.column > 0 && rot != Orientation::right &&
+      !visits[pos.row][pos.column - 1]) {
+    robotMatrix[pos.row][pos.column - 1] =
+        binaryMatrix[pos.row][pos.column - 1];
+  }
+}
+
 Orientation RobotPathFinder::getNextRot(Orientation rot) {
   switch (rot) {
   case Orientation::up:
@@ -134,7 +205,74 @@ void RobotPathFinder::convertEnterExitPoints(CellPos& enterPoint,
   enterPoint = tempEnter;
   leavePoint = tempExit;
 }
+CellInfo RobotPathFinder::getNextPointWithPreference(CellPos pos,
+                                                     visits_t& visits,
+                                                     bool_grid_t& binaryMatrix,
+                                                     Orientation rot,
+                                                     CellPos exitPoint) {
+  int rows(binaryMatrix.size());
+  int columns(binaryMatrix[0].size());
 
+  CellInfo temp{};
+  CellInfo chosen{};
+
+  std::array<CellInfo, 4> allPoints;
+
+  if (pos.row > 0 && rot != Orientation::down &&
+      binaryMatrix[pos.row - 1][pos.column] != GridCellState::FILLED &&
+      !visits[pos.row - 1][pos.column]) {
+    temp.valid = true;
+    temp.pos = {pos.row - 1, pos.column};
+    temp.cellState = binaryMatrix[pos.row - 1][pos.column];
+
+    allPoints[0] = temp;
+  }
+
+  if (pos.column < columns - 1 && rot != Orientation::left &&
+      binaryMatrix[pos.row][pos.column + 1] != GridCellState::FILLED &&
+      !visits[pos.row][pos.column + 1]) {
+    temp.valid = true;
+    temp.pos = {pos.row, pos.column + 1};
+    temp.cellState = binaryMatrix[pos.row][pos.column + 1];
+    allPoints[1] = temp;
+  }
+  if (pos.row < rows - 1 && rot != Orientation::up &&
+      binaryMatrix[pos.row + 1][pos.column] != GridCellState::FILLED &&
+      !visits[pos.row + 1][pos.column]) {
+    temp.valid = true;
+    temp.pos = {pos.row + 1, pos.column};
+    temp.cellState = binaryMatrix[pos.row + 1][pos.column];
+    allPoints[2] = temp;
+  }
+  if (pos.column > 0 && rot != Orientation::right &&
+      binaryMatrix[pos.row][pos.column - 1] != GridCellState::FILLED &&
+      !visits[pos.row][pos.column - 1]) {
+    temp.valid = true;
+    temp.pos = {pos.row, pos.column - 1};
+    temp.cellState = binaryMatrix[pos.row][pos.column - 1];
+    allPoints[3] = temp;
+  }
+
+  if (exitPoint.row < pos.row && allPoints[0].valid)
+    chosen = allPoints[0];
+  else if (exitPoint.column > pos.column && allPoints[1].valid)
+    chosen = allPoints[1];
+  else if (exitPoint.row > pos.row && allPoints[2].valid)
+    chosen = allPoints[2];
+  else if (exitPoint.column < pos.column && allPoints[3].valid)
+    chosen = allPoints[3];
+  else {
+    // If nothing stick to normal decision
+    int i{0};
+    while (i < 4 && !allPoints[i].valid)
+      ++i;
+
+    if (i != 4)
+      chosen = allPoints[i];
+  }
+
+  return chosen;
+}
 CellInfo RobotPathFinder::getNextPoint(CellPos pos, visits_t& visits,
                                        bool_grid_t& binaryMatrix,
                                        Orientation rot) {
