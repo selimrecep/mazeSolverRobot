@@ -13,6 +13,7 @@ private:
 public:
   Path(int maxStepCount);
   void addStep(CellPos pos);
+  void setStep(int index, CellPos pos);
   CellPos getStep(int index);
   void empty();
 

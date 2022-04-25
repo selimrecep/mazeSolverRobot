@@ -82,6 +82,7 @@ void testSingleMaze() {
         std::wcout << "LOG: This is not a shorter path! Going back.\n";
       std::wcout << "Press any key(after a key) to iterate for next step Write "
                     "'e' if want to pass over.\n ";
+      std::wcin.clear();
       std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
       // why doesnt work...
@@ -91,8 +92,26 @@ void testSingleMaze() {
         passOver = true;
     }
   };
+
+  auto euclerShortestDecider = [exitPoint](std::array<CellInfo, 4>& allPoints,
+                                           CellPos pos,
+                                           CellInfo& chosen) -> bool {
+    if (exitPoint.row < pos.row && allPoints[0].valid)
+      chosen = allPoints[0];
+    else if (exitPoint.column > pos.column && allPoints[1].valid)
+      chosen = allPoints[1];
+    else if (exitPoint.row > pos.row && allPoints[2].valid)
+      chosen = allPoints[2];
+    else if (exitPoint.column < pos.column && allPoints[3].valid)
+      chosen = allPoints[3];
+    else
+      return false;
+    return true;
+  };
+
   PathMatrixReturn pathAndMatrix{RobotPathFinder::solveMaze(
-      gridBinary, entryPoint, exitPoint, useShortestPathOnly, callback)};
+      gridBinary, entryPoint, exitPoint, euclerShortestDecider,
+      useShortestPathOnly, callback)};
   Path& path{pathAndMatrix.path};
   bool_grid_t& robotMatrix{pathAndMatrix.robotMatrix};
   std::wcout << "Maze finished! Clearing matrix and printing final state: \n";
@@ -113,7 +132,7 @@ void testSingleMaze() {
 void testMazes() {
   int testAmount{};
   std::wcout << "Please enter amount of tests: ";
-  std::cin >> testAmount;
+  std::wcin >> testAmount;
 
   if (testAmount < 1) {
     std::wcout << "Invalid value.";
@@ -183,8 +202,24 @@ void testMazes() {
     maze.generate();
     bool_grid_t gridBinary;
     maze.getTrueGrid().getAsMatrix(gridBinary);
-    PathMatrixReturn pathAndMatrix =
-        RobotPathFinder::solveMaze(gridBinary, entryPoint, exitPoint);
+
+    auto euclerShortestDecider = [exitPoint](std::array<CellInfo, 4>& allPoints,
+                                             CellPos pos,
+                                             CellInfo& chosen) -> bool {
+      if (exitPoint.row < pos.row && allPoints[0].valid)
+        chosen = allPoints[0];
+      else if (exitPoint.column > pos.column && allPoints[1].valid)
+        chosen = allPoints[1];
+      else if (exitPoint.row > pos.row && allPoints[2].valid)
+        chosen = allPoints[2];
+      else if (exitPoint.column < pos.column && allPoints[3].valid)
+        chosen = allPoints[3];
+      else
+        return false;
+      return true;
+    };
+    PathMatrixReturn pathAndMatrix = RobotPathFinder::solveMaze(
+        gridBinary, entryPoint, exitPoint, euclerShortestDecider);
 
     Path& robotPath{pathAndMatrix.path};
 

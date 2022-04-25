@@ -12,6 +12,16 @@ void Path::addStep(CellPos pos) {
   pathSteps[stepCount++] = pos;
 }
 
+void Path::setStep(int index, CellPos pos) {
+  if (index >= maxStepCount) {
+    maxStepCount = (index + 2) * 2;
+    pathSteps.resize(maxStepCount);
+  }
+  if (index + 1 > stepCount)
+    stepCount = index + 1;
+  pathSteps.at(index) = pos;
+}
+
 int Path::getLength() { return stepCount; }
 
 void Path::empty() { stepCount = 0; }
