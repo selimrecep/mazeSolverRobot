@@ -3,9 +3,13 @@
 #include <CellPos.h>
 #include <Maze2.h>
 #include <MazeAnalyzing.h>
+#include <codecvt>
+#include <fstream>
 #include <iostream>
+#include <locale>
 #include <numeric>
 #include <random.h>
+#include <string>
 
 void MazeAnalyzing::runAnalyzer(std::wostream& out, std::wistream& in) {
   int rows{}, columns{};
@@ -126,7 +130,7 @@ void MazeAnalyzing::runAnalyzer(std::wostream& out, std::wistream& in) {
   out << "Parsed.\n";
 
   out << "Creating odds/probability matrix:\n";
-  std::vector<std::vector<std::vector<odd_t>>> odds;
+  odds_t odds;
   odds.resize(rows);
   for (int i{0}; i < rows; ++i) {
     odds[i].resize(columns);
@@ -419,6 +423,8 @@ void MazeAnalyzing::runAnalyzer(std::wostream& out, std::wistream& in) {
       << "% \n";
   out << "--------------------------------------------\n";
 
+  MazeAnalyzing::exportData(cellHistory, odds);
+
   out << "Enter 'e' if you want to exit, enter something else(a char plz) if "
          "you want to continue testing.\n";
 
@@ -447,9 +453,92 @@ void MazeAnalyzing::runAnalyzer(std::wostream& out, std::wistream& in) {
   in >> aaaa;
 }
 
-void MazeAnalyzing::testSingleMaze(
-    std::wostream& out, std::wistream& in, bool shortPathOnly, Maze2& maze,
-    std::vector<std::vector<std::vector<odd_t>>>& odds) {
+void MazeAnalyzing::exportData(
+    std::vector<std::vector<CellHistory*>>& cellHistory, odds_t& odds) {
+  std::wcout << "Base path for outputting files: ";
+  std::wstring wbaseFileName{};
+  std::wcin >> wbaseFileName;
+
+  // oh god...
+
+  using convert_type = std::codecvt_utf8<wchar_t>;
+  std::wstring_convert<convert_type, wchar_t> converter;
+
+  std::string baseFileName(converter.to_bytes(wbaseFileName));
+
+  std::ofstream file;
+
+  std::string firstDataFileName{baseFileName + "_base.csv"};
+  file.open(firstDataFileName);
+
+  file << ",";
+  int size(cellHistory[0].size());
+  for (int i{1}; i <= size; ++i) {
+    file << "C" << i;
+    if (i != size)
+      file << ",";
+  }
+  file << "\n";
+
+  int tmpSize(cellHistory.size());
+  for (int i{0}; i < tmpSize; ++i) {
+    file << "R" << (i + 1) << ",";
+
+    std::vector<double> chances;
+
+    for (int j{0}; j < size; ++j) {
+      file << static_cast<int>(cellHistory[i][j]->getChances(chances));
+      if (j != size - 1) {
+        file << ",";
+      }
+    }
+
+    file << "\n";
+  }
+
+  file.close();
+
+  std::string rawDataFileName{baseFileName + "_raw.csv"};
+  file.open(rawDataFileName);
+
+  // bleeding eyes
+  size_t rowCount{odds.size()};
+  size_t sizeOdds{odds[0].size()};
+
+  for (size_t i{0}; i < rowCount; ++i) {
+    for (size_t j{0}; j < sizeOdds; j++) {
+      file << i << "," << j << ",";
+      for (int k{0}; k < 4; ++k) {
+        file << std::to_string(odds[i][j][k]);
+        if (k != 3)
+          file << ",";
+      }
+      file << "\n";
+    }
+  }
+
+  file.close();
+
+  std::string rotOnlyDataFileName{baseFileName + "_rotOnly.csv"};
+  file.open(rotOnlyDataFileName);
+
+  for (size_t i{0}; i < rowCount; ++i) {
+    for (size_t j{0}; j < sizeOdds; j++) {
+      file << i << "," << j << ",";
+      std::vector<double> chances;
+      file << static_cast<int>(cellHistory[i][j]->getChances(chances));
+      if (j != sizeOdds - 1)
+        file << ",";
+
+      file << "\n";
+    }
+  }
+
+  file.close();
+}
+void MazeAnalyzing::testSingleMaze(std::wostream& out, std::wistream& in,
+                                   bool shortPathOnly, Maze2& maze,
+                                   odds_t& odds) {
   bool_grid_t binaryMatrix;
   CellPos entryPoint{}, exitPoint{};
 

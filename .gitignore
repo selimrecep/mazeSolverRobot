@@ -6,3 +6,4 @@ mazeSolverRobot/src/main.ilk
 mazeSolverRobot/src/main.pdb
 build
 .cache
+test_*
